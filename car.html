@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Highway Dodge</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #2e7d32; /* Grass green background */
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+<body>
+
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+      canvas.width = Math.min(window.innerWidth, 500); // Limit width for arcade feel
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Game Variables
+    let score = 0;
+    let gameOver = false;
+    let speed = 6;
+    let frameCount = 0;
+    let lineOffset = 0;
+
+    // Road Layout
+    const roadWidth = 320;
+    const lanesCount = 4;
+    const laneWidth = roadWidth / lanesCount;
+    
+    function getRoadX() {
+      return (canvas.width - roadWidth) / 2;
+    }
+
+    // Player Car
+    const player = {
+      lane: 1, // Lanes 0, 1, 2, 3
+      y: canvas.height - 120,
+      width: 40,
+      height: 75,
+      color: '#e53935'
+    };
+
+    // Enemies and Scenery
+    let enemies = [];
+    let trees = [];
+
+    // Controls: Tap left/right side of screen to switch lanes
+    function handleTouch(e) {
+      if (gameOver) {
+        restartGame();
+        return;
+      }
+      const touchX = e.touches[0].clientX;
+      if (touchX < window.innerWidth / 2) {
+        if (player.lane > 0) player.lane--;
+      } else {
+        if (player.lane < lanesCount - 1) player.lane++;
+      }
+    }
+
+    window.addEventListener('touchstart', handleTouch, false);
+
+    // Helper: Draw detailed cars
+    function drawCar(x, y, width, height, color, isOncoming) {
+      ctx.fillStyle = color;
+      ctx.shadowBlur = 4;
+      ctx.shadowColor = 'rgba(0,0,0,0.4)';
+      
+      // Main Body
+      ctx.beginPath();
+      ctx.roundRect(x, y, width, height, 8);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Roof / Windshield
+      ctx.fillStyle = '#111111';
+      ctx.fillRect(x + 5, y + (isOncoming ? 15 : height - 35), width - 10, 20);
+
+      // Headlights
+      ctx.fillStyle = isOncoming ? '#fff700' : '#ff1744';
+      const lightY = isOncoming ? y + height - 6 : y;
+      ctx.fillRect(x + 4, lightY, 8, 6);
+      ctx.fillRect(x + width - 12, lightY, 8, 6);
+    }
+
+    // Helper: Draw trees
+    function drawTree(x, y) {
+      // Trunk
+      ctx.fillStyle = '#5d4037';
+      ctx.fillRect(x - 4, y, 8, 14);
+      // Leaves
+      ctx.fillStyle = '#1b5e20';
+      ctx.beginPath();
+      ctx.arc(x, y - 10, 18, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function spawnEnemy() {
+      const lane = Math.floor(Math.random() * lanesCount);
+      const colors = ['#1e88e5', '#fdd835', '#8e24aa', '#43a047'];
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      enemies.push({
+        lane,
+        y: -100,
+        speed: Math.random() * 2 + speed,
+        color
+      });
+    }
+
+    function spawnTree() {
+      const side = Math.random() > 0.5 ? 'left' : 'right';
+      const roadX = getRoadX();
+      const x = side === 'left' ? Math.random() * (roadX - 40) + 20 : Math.random() * (canvas.width - roadX - 60) + roadX + roadWidth + 20;
+      trees.push({ x, y: -40 });
+    }
+
+    function restartGame() {
+      score = 0;
+      speed = 6;
+      enemies = [];
+      trees = [];
+      player.lane = 1;
+      gameOver = false;
+      animate();
+    }
+
+    function animate() {
+      if (gameOver) return;
+
+      const roadX = getRoadX();
+
+      // Clear Canvas
+      ctx.fillStyle = '#2e7d32';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw Road Base
+      ctx.fillStyle = '#424242';
+      ctx.fillRect(roadX, 0, roadWidth, canvas.height);
+
+      // Draw Road Shoulders
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(roadX - 6, 0, 6, canvas.height);
+      ctx.fillRect(roadX + roadWidth, 0, 6, canvas.height);
+
+      // Draw Lane Dividers
+      lineOffset = (lineOffset + speed) % 40;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([20, 20]);
+
+      for (let i = 1; i < lanesCount; i++) {
+        ctx.beginPath();
+        ctx.lineDashOffset = -lineOffset;
+        ctx.moveTo(roadX + i * laneWidth, 0);
+        ctx.lineTo(roadX + i * laneWidth, canvas.height);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+
+      frameCount++;
+      if (frameCount % 45 === 0) spawnEnemy();
+      if (frameCount % 15 === 0) spawnTree();
+
+      // Update & Draw Trees
+      for (let i = trees.length - 1; i >= 0; i--) {
+        let tree = trees[i];
+        tree.y += speed;
+        drawTree(tree.x, tree.y);
+        if (tree.y > canvas.height + 40) trees.splice(i, 1);
+      }
+
+      // Draw Player Car
+      const playerX = roadX + player.lane * laneWidth + (laneWidth - player.width) / 2;
+      drawCar(playerX, player.y, player.width, player.height, player.color, false);
+
+      // Update & Draw Enemy Cars
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        let enemy = enemies[i];
+        enemy.y += enemy.speed;
+
+        const enemyX = roadX + enemy.lane * laneWidth + (laneWidth - player.width) / 2;
+        drawCar(enemyX, enemy.y, player.width, player.height, enemy.color, true);
+
+        // Check Collision
+        if (
+          enemy.lane === player.lane &&
+          enemy.y + player.height > player.y &&
+          enemy.y < player.y + player.height
+        ) {
+          gameOver = true;
+        }
+
+        // Score Points
+        if (enemy.y > canvas.height) {
+          enemies.splice(i, 1);
+          score += 10;
+          if (score % 50 === 0) speed += 0.5; // Increase difficulty
+        }
+      }
+
+      // Score Display
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 22px -apple-system, sans-serif';
+      ctx.fillText(`Score: ${score}`, 20, 45);
+
+      // Game Over Screen
+      if (gameOver) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#ff1744';
+        ctx.font = 'bold 36px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('CRASHED!', canvas.width / 2, canvas.height / 2 - 20);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '18px -apple-system, sans-serif';
+        ctx.fillText(`Final Score: ${score}`, canvas.width / 2, canvas.height / 2 + 20);
+        ctx.fillText('Tap anywhere to restart', canvas.width / 2, canvas.height / 2 + 60);
+        ctx.textAlign = 'left';
+        return;
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    animate();
+  </script>
+</body>
+</html>
